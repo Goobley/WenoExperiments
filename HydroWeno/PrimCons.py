@@ -1,10 +1,10 @@
 import numpy as np
 from numba import njit
-from SimSettings import Prim, Cons, Gas
+from .SimSettings import Prim, Cons, Gas
 
 SmallPressure = 1e-16
 
-@njit('float64[:,:](float64[:,:])')
+@njit('float64[:,:](float64[:,:])', cache=True)
 def prim2cons(V):
     result = np.empty((Cons.NumVars, V.shape[1]))
     result[Cons.Dens] = V[Prim.Dens]
@@ -14,12 +14,12 @@ def prim2cons(V):
     result[Cons.Ener] = eKin + eInt
     return result
 
-@njit('float64[:](float64[:], float64[:])')
+@njit('float64[:](float64[:], float64[:])', cache=True)
 def eos(dens, eInt):
     pres = np.maximum((Gas.Gamma - 1.0) * dens * eInt, SmallPressure)
     return pres
 
-@njit('float64[:,:](float64[:,:])')
+@njit('float64[:,:](float64[:,:])', cache=True)
 def cons2prim(U):
     result = np.empty((Prim.NumVars, U.shape[1]))
     result[Prim.Dens] = U[Cons.Dens]
@@ -32,7 +32,7 @@ def cons2prim(U):
     result[Prim.Eint] = eInt * U[Cons.Dens]
     return result
 
-@njit('float64[:,:](float64[:,:])')
+@njit('float64[:,:](float64[:,:])', cache=True)
 def prim2flux(V):
     result = np.empty((Cons.NumVars, V.shape[1]))
     eKin = 0.5 * V[Prim.Dens] * V[Prim.Velo]**2

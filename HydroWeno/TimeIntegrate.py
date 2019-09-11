@@ -1,32 +1,34 @@
 import numpy as np
-from Weno import reconstruct_weno
-from Flux import lax_friedrichs_flux
-from PrimCons import cons2prim
-from BCs import apply_bcs
-from SimSettings import Sim
+from .Weno import reconstruct_weno, reconstruct_weno_z, reconstruct_weno_nm
+from .Flux import lax_friedrichs_flux, lax_wendroff_flux, gforce_flux
+from .PrimCons import cons2prim
+from .SimSettings import Prim, Sim
 
-def tvd_rk3(dt, prim, cons):
-    dtx = dt / Sim.GrDx
-    consNew = np.zeros_like(cons)
+def tvd_rk3(apply_bcs, reconstruct, flux_fn):
+    def tvd_rk3_impl(dt, grid, prim, cons):
+        # dx = np.ones(prim.shape[1]) * Sim.GrDx
+        consNew = np.zeros_like(cons)
+        GriBeg = grid.griBeg
+        GriEnd = grid.griEnd
+        dtx = (dt / grid.dx)[GriBeg:GriEnd]
 
-    apply_bcs(prim)
-    primRecon = reconstruct_weno(prim)
-    flux = lax_friedrichs_flux(primRecon)
-    consNew[:, Sim.GriBeg:Sim.GriEnd] = cons[:, Sim.GriBeg:Sim.GriEnd] - dtx * (flux[:, Sim.GriBeg+1:Sim.GriEnd+1] - flux[:, Sim.GriBeg:Sim.GriEnd])
-    primNew = cons2prim(consNew)
+        apply_bcs(grid, prim)
+        primRecon = reconstruct(prim, grid.dx)
+        flux = flux_fn(primRecon, grid.dx, dt)
+        consNew[:, GriBeg:GriEnd] = cons[:, GriBeg:GriEnd] - dtx * (flux[:, GriBeg+1:GriEnd+1] - flux[:, GriBeg:GriEnd])
+        primNew = cons2prim(consNew)
 
-    apply_bcs(primNew)
-    primRecon[:] = reconstruct_weno(primNew)
-    flux[:] = lax_friedrichs_flux(primRecon)
-    consNew[:, Sim.GriBeg:Sim.GriEnd] = 0.75 * cons[:, Sim.GriBeg:Sim.GriEnd] + 0.25 * consNew[:, Sim.GriBeg:Sim.GriEnd] - \
-                                        0.25 * dtx * (flux[:, Sim.GriBeg+1:Sim.GriEnd+1] - flux[:, Sim.GriBeg:Sim.GriEnd]) 
-    primNew[:] = cons2prim(consNew)
+        apply_bcs(grid, primNew)
+        primRecon[:] = reconstruct(primNew, grid.dx)
+        flux[:] = flux_fn(primRecon, grid.dx, dt)
+        consNew[:, GriBeg:GriEnd] = 0.75 * cons[:, GriBeg:GriEnd] + 0.25 * consNew[:, GriBeg:GriEnd] - 0.25 * dtx * (flux[:, GriBeg+1:GriEnd+1] - flux[:, GriBeg:GriEnd]) 
+        primNew[:] = cons2prim(consNew)
 
-    apply_bcs(primNew)
-    primRecon[:] = reconstruct_weno(primNew)
-    flux[:] = lax_friedrichs_flux(primRecon)
-    consNew[:, Sim.GriBeg:Sim.GriEnd] = 1/3 * cons[:, Sim.GriBeg:Sim.GriEnd] + 2/3 * consNew[:, Sim.GriBeg:Sim.GriEnd] - \
-                                        2/3 * dtx * (flux[:, Sim.GriBeg+1:Sim.GriEnd+1] - flux[:, Sim.GriBeg:Sim.GriEnd]) 
-    primNew[:] = cons2prim(consNew)
+        apply_bcs(grid, primNew)
+        primRecon[:] = reconstruct(primNew, grid.dx)
+        flux[:] = flux_fn(primRecon, grid.dx, dt)
+        consNew[:, GriBeg:GriEnd] = 1/3 * cons[:, GriBeg:GriEnd] + 2/3 * consNew[:, GriBeg:GriEnd] - 2/3 * dtx * (flux[:, GriBeg+1:GriEnd+1] - flux[:, GriBeg:GriEnd]) 
+        primNew[:] = cons2prim(consNew)
 
-    return primNew, consNew
+        return primNew, consNew
+    return tvd_rk3_impl
