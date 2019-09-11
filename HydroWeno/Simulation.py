@@ -17,6 +17,22 @@ class Grid:
         self.xStart = self.cc[self.griBeg]
         self.xEnd = self.cc[self.griEnd - 1]
 
+class GridCC:
+    def __init__(self, cellCentres, numGhost):
+        self.numCells = cellCentres.shape[0]
+        self.numGhost = numGhost
+        leftDx = cellCentres[1] - cellCentres[0]
+        rightDx = cellCentres[-1] - cellCentres[-2]
+        self.cc = np.concatenate((np.linspace(cellCentres[0] - leftDx * numGhost, cellCentres[0] - leftDx, numGhost),
+                                          cellCentres,
+                                          np.linspace(cellCentres[-1] + rightDx, cellCentres[-1] + rightDx * numGhost, numGhost)))
+        self.interfaces = np.concatenate(([self.cc[0] - leftDx], 0.5*(self.cc[1:] + self.cc[:-1]), [self.cc[-1] + rightDx]))
+        self.dx = self.interfaces[1:] - self.interfaces[:-1]
+        self.griBeg = self.numGhost
+        self.griEnd = self.numCells + self.numGhost
+        self.griMax = self.numCells + 2 * self.numGhost
+        self.xStart = self.cc[self.griBeg]
+        self.xEnd = self.cc[self.griEnd - 1]
 
 class Simulation:
     def __init__(self, grid, initialise, apply_bcs, timestep_limit, time_integrate, reconstruction, flux_fn):

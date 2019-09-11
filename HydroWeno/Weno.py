@@ -138,9 +138,11 @@ def reconstruct_weno_nm(q, dx):
             # Compute beta, the smoothness indicator for each intepolating polynomial
 
             q00 = q[row, i-1] + rho[i-1] * (q[row, i-1] - q[row, i-2])
+            # q00 = q[row, i-1] + rho[i-2] * (q[row, i-1] - q[row, i-2])
             q01 = rho[i] * q[row, i] + (1.0 - rho[i]) * q[row, i+1]
             q10 = rho[i-1] * q[row, i-1] + (1.0 - rho[i-1])* q[row, i]
             q11 = q[row, i+1] + rho[i+1] * (q[row, i+1] - q[row, i+2])
+            # q11 = q[row, i+1] + rho[i+2] * (q[row, i+1] - q[row, i+2])
             q12 = rho[i+1] * q[row, i+1] + (1.0 - rho[i+1]) * q[row, i+2]
             q21 = rho[i-2] * q[row, i-2] + (1.0 - rho[i-2]) * q[row, i-1]
 
