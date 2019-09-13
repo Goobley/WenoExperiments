@@ -1,8 +1,8 @@
 import numpy as np
 from numba import njit, stencil, prange
 
-@njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
-def reconstruct_weno(q, dx):
+@njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
+def reconstruct_weno(q, dx=None):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
 
@@ -51,8 +51,8 @@ def reconstruct_weno(q, dx):
     result[:, 1, -2:] = q[:, -2:]
     return result
 
-@njit('float64[:,:,:](float64[:,:])', parallel=True, cache=True)
-def reconstruct_weno_z(q):
+@njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
+def reconstruct_weno_z(q, dx=None):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
 
@@ -109,86 +109,172 @@ def reconstruct_weno_nm(q, dx):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
 
-    # Set up general and left/right coefficients.
-    # The left/right coeffs are just flipped relative to each other
+    # Set up general coefficients.
     Pow = 2
     WenoEps = 1e-34
-    # EnoCoeffL = np.array(((-2.0/3.0,  -1.0/3.0,  2.0),
-    #                       ( 2.0/3.0,   2.0/3.0, -1.0/3.0),
-    #                       (-1.0/3.0,   2.0/3.0,  2.0/3.0)))
-    # LinWL = np.array((0.3, 0.6, 0.1))
-    # EnoCoeffR = np.array((( 2.0,      -1.0/3.0, -2.0/3.0),
-    #                       (-1.0/3.0,   2.0/3.0,  2.0/3.0),
-    #                       ( 2.0/3.0,   2.0/3.0, -1.0/3.0)))
+    EnoCoeff  = np.array((( 2.0,      -1.0/3.0, -2.0/3.0),
+                          (-1.0/3.0,   2.0/3.0,  2.0/3.0),
+                          ( 2.0/3.0,   2.0/3.0, -1.0/3.0)))
+    BetaCoeffPart1 = np.array(((0.0,  2.0, -2.0),
+                               (2.0, -4.0,  2.0),
+                               (2.0, -4.0,  2.0)))
+    BetaCoeffPart2 = np.array((( 4.0, -2.0, -2.0),
+                               (-2.0,  0.0,  2.0),
+                               (-6.0,  8.0, -2.0)))
     LinW = np.array((0.1, 0.6, 0.3))
     # length ratio designated rho
     rho = np.zeros(nGrid)
     rho[:-1] = dx[:-1] / (dx[:-1] + dx[1:])
-    # print(rho)
-    # rhoPrime is used for the double extrapolation performed for the first stencil
-    # rhoPrime = np.zeros(nGrid)
-    # rhoPrime[1:] = dx[1:] / (dx[:-1] + dx[1:])
 
     # Loop over each row in the q matrix - we parallelise over rows
     for row in prange(nRows):
-        beta = np.empty((2,3))
-        # betaZ = np.empty(3)
-        stencil = np.empty((3, 3)) # coords are [left/right, stencilIdx, stencilEntry]
+        betaL = np.empty(3)
+        betaR = np.empty(3)
+        stencilL = np.empty((3, 3)) # coords are [stencilIdx, stencilEntry]
+        stencilR = np.empty((3, 3)) # coords are [stencilIdx, stencilEntry]
+        enoIntpL = np.empty(3)
+        enoIntpR = np.empty(3)
         for i in range(2, nGrid-2):
             # Compute beta, the smoothness indicator for each intepolating polynomial
 
             q00 = q[row, i-1] + rho[i-1] * (q[row, i-1] - q[row, i-2])
-            # q00 = q[row, i-1] + rho[i-2] * (q[row, i-1] - q[row, i-2])
-            q01 = rho[i] * q[row, i] + (1.0 - rho[i]) * q[row, i+1]
-            q10 = rho[i-1] * q[row, i-1] + (1.0 - rho[i-1])* q[row, i]
+            q01 = (1.0 - rho[i]) * q[row, i] + rho[i] * q[row, i+1]
+            q10 = (1.0 - rho[i-1]) * q[row, i-1] + rho[i-1] * q[row, i]
             q11 = q[row, i+1] + rho[i+1] * (q[row, i+1] - q[row, i+2])
-            # q11 = q[row, i+1] + rho[i+2] * (q[row, i+1] - q[row, i+2])
-            q12 = rho[i+1] * q[row, i+1] + (1.0 - rho[i+1]) * q[row, i+2]
-            q21 = rho[i-2] * q[row, i-2] + (1.0 - rho[i-2]) * q[row, i-1]
+            q12 = (1.0 - rho[i+1]) * q[row, i+1] + rho[i+1] * q[row, i+2]
+            q21 = (1.0 - rho[i-2]) * q[row, i-2] + rho[i-2] * q[row, i-1]
+            
+            stencilL[0, 0] = q[row, i]
+            stencilL[0, 1] = q01
+            stencilL[0, 2] = q11
+            stencilL[1, 0] = q01
+            stencilL[1, 1] = q[row, i]
+            stencilL[1, 2] = q10
+            stencilL[2, 0] = q10
+            stencilL[2, 1] = q[row, i-1]
+            stencilL[2, 2] = q21
+            
+            stencilR[0, 0] = q[row, i]
+            stencilR[0, 1] = q10
+            stencilR[0, 2] = q00
+            stencilR[1, 0] = q10
+            stencilR[1, 1] = q[row, i]
+            stencilR[1, 2] = q01
+            stencilR[2, 0] = q01
+            stencilR[2, 1] = q[row, i+1]
+            stencilR[2, 2] = q12
 
 
-            # stencil[0, 0] = (2.0 * rhoPrime[i-1] + rho[i-2]) * q[row, i-1] + rhoPrime[i-1] * q[row, i-2]
-            # stencil[0, 1] = (1.0 - rho[i-1]) * q[row, i-1] + rho[i-1] * q[row, i]
-            # stencil[0, 2] = q[row, i]
-            # stencil[1, 0] = stencil[0, 1]
-            # stencil[1, 1] = q[row, i]
-            # stencil[1, 2] = (1.0 - rho[i]) * q[row, i] + rho[i] * q[row, i+1]
-            # stencil[2, 0] = stencil[1, 2]
-            # stencil[2, 1] = q[row, i+1]
-            # stencil[2, 2] = (1.0 - rho[i+1]) * q[row, i+1] + rho[i+1] * q[row, i+2]
-
-            beta[0, 0] = 13.0/12.0*(2.0*q01 - 2.0*q11)**2 + 0.25*(4.0*q[row, i] - 2.0*q01 - 2.0*q11)**2
-            beta[0, 1] = 13.0/12.0*(2.0*q01 - 4.0*q[row, i] + 2.0*q10)**2 + 0.25*(-2.0*q01 + 2.0*q10)**2
-            beta[0, 2] = 13.0/12.0*(2.0*q10 - 4.0*q[row, i-1] + 2.0*q21)**2 + 0.25*(-6.0*q10 + 8.0*q[row, i-1] - 2.0*q21)**2
-
-            beta[1, 0] = 13.0/12.0*(2.0*q10 - 2.0*q00)**2 + 0.25*(4.0*q[row, i] - 2.0*q10 - 2.0*q00)**2
-            beta[1, 1] = 13.0/12.0*(2.0*q10 - 4.0*q[row, i] + 2.0*q01)**2 + 0.25*(-2.0*q10 + 2.0*q01)**2
-            beta[1, 2] = 13.0/12.0*(2.0*q01 - 4.0*q[row, i+1] + 2.0*q12)**2 + 0.25*(-6.0*q01 + 8.0*q[row, i+1] - 2.0*q12)**2
-            # tau5 = np.abs(beta[0] - beta[2])
-            # betaZ[:] = ((beta + WenoEps) / (beta + tau5 + WenoEps))
+            for s in range(3):
+                betaL[s] = 13.0/12.0*np.dot(BetaCoeffPart1[s], stencilL[s])**2 + 0.25*np.dot(BetaCoeffPart2[s], stencilL[s])**2
+                betaR[s] = 13.0/12.0*np.dot(BetaCoeffPart1[s], stencilR[s])**2 + 0.25*np.dot(BetaCoeffPart2[s], stencilR[s])**2
 
             # Compute and normalise the non-linear weights
-            nonLinWL = LinW / (WenoEps + beta[0, :])**Pow
-            nonLinWR = LinW / (WenoEps + beta[1, :])**Pow
+            nonLinWL = LinW / (WenoEps + betaL)**Pow
+            nonLinWR = LinW / (WenoEps + betaR)**Pow
             nonLinWL /= np.sum(nonLinWL)
             nonLinWR /= np.sum(nonLinWR)
 
             # Compute the standard polynomial reconstructions
-            enoIntpLR = np.zeros((2, 3))
-            # for s in range(3):
-            #     enoIntpL[s] = np.dot(stencil[s], EnoCoeffL[2-s]) 
-            #     enoIntpR[s] = np.dot(stencil[s], EnoCoeffR[s]) 
-            enoIntpLR[0, 0] = ( 6.0*q[row, i] - 1.0*q01         - 2.0*q11)
-            enoIntpLR[0, 1] = (-1.0*q01       + 2.0*q[row, i]   + 2.0*q10)
-            enoIntpLR[0, 2] = ( 2.0*q10       + 2.0*q[row, i-1] - 1.0*q21)
-            enoIntpLR[1, 0] = ( 6.0*q[row, i] - 1.0*q10         - 2.0*q00)
-            enoIntpLR[1, 1] = (-1.0*q10       + 2.0*q[row, i]   + 2.0*q01)
-            enoIntpLR[1, 2] = ( 2.0*q01       + 2.0*q[row, i+1] - 1.0*q12)
-            enoIntpLR /= 3.0
+            for s in range(3):
+                enoIntpL[s] = np.dot(stencilL[s], EnoCoeff[s])
+                enoIntpR[s] = np.dot(stencilR[s], EnoCoeff[s])
 
             # Combine the different polynomial reconstrucitions weighted by their non-linear weights
-            result[row, 0, i] = np.dot(nonLinWL, enoIntpLR[0, :])
-            result[row, 1, i] = np.dot(nonLinWR, enoIntpLR[1, :])
+            result[row, 0, i] = np.dot(nonLinWL, enoIntpL)
+            result[row, 1, i] = np.dot(nonLinWR, enoIntpR)
+    result[:, 0, :2] = q[:, :2]
+    result[:, 1, :2] = q[:, :2]
+    result[:, 0, -2:] = q[:, -2:]
+    result[:, 1, -2:] = q[:, -2:]
+    return result
+
+@njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
+def reconstruct_weno_nm_z(q, dx):
+    nRows, nGrid = q.shape
+    result = np.zeros((nRows, 2, nGrid))
+
+    # Set up general coefficients.
+    Pow = 2
+    WenoEps = 1e-34
+    EnoCoeff  = np.array((( 2.0,      -1.0/3.0, -2.0/3.0),
+                          (-1.0/3.0,   2.0/3.0,  2.0/3.0),
+                          ( 2.0/3.0,   2.0/3.0, -1.0/3.0)))
+    BetaCoeffPart1 = np.array(((0.0,  2.0, -2.0),
+                               (2.0, -4.0,  2.0),
+                               (2.0, -4.0,  2.0)))
+    BetaCoeffPart2 = np.array((( 4.0, -2.0, -2.0),
+                               (-2.0,  0.0,  2.0),
+                               (-6.0,  8.0, -2.0)))
+    LinW = np.array((0.1, 0.6, 0.3))
+    # length ratio designated rho
+    rho = np.zeros(nGrid)
+    rho[:-1] = dx[:-1] / (dx[:-1] + dx[1:])
+
+    # Loop over each row in the q matrix - we parallelise over rows
+    for row in prange(nRows):
+        betaL = np.empty(3)
+        betaR = np.empty(3)
+        betaZL = np.empty(3)
+        betaZR = np.empty(3)
+        stencilL = np.empty((3, 3)) # coords are [stencilIdx, stencilEntry]
+        stencilR = np.empty((3, 3)) # coords are [stencilIdx, stencilEntry]
+        enoIntpL = np.empty(3)
+        enoIntpR = np.empty(3)
+        for i in range(2, nGrid-2):
+            # Compute beta, the smoothness indicator for each intepolating polynomial
+
+            q00 = q[row, i-1] + rho[i-1] * (q[row, i-1] - q[row, i-2])
+            q01 = (1.0 - rho[i]) * q[row, i] + rho[i] * q[row, i+1]
+            q10 = (1.0 - rho[i-1]) * q[row, i-1] + rho[i-1] * q[row, i]
+            q11 = q[row, i+1] + rho[i+1] * (q[row, i+1] - q[row, i+2])
+            q12 = (1.0 - rho[i+1]) * q[row, i+1] + rho[i+1] * q[row, i+2]
+            q21 = (1.0 - rho[i-2]) * q[row, i-2] + rho[i-2] * q[row, i-1]
+            
+            stencilL[0, 0] = q[row, i]
+            stencilL[0, 1] = q01
+            stencilL[0, 2] = q11
+            stencilL[1, 0] = q01
+            stencilL[1, 1] = q[row, i]
+            stencilL[1, 2] = q10
+            stencilL[2, 0] = q10
+            stencilL[2, 1] = q[row, i-1]
+            stencilL[2, 2] = q21
+            
+            stencilR[0, 0] = q[row, i]
+            stencilR[0, 1] = q10
+            stencilR[0, 2] = q00
+            stencilR[1, 0] = q10
+            stencilR[1, 1] = q[row, i]
+            stencilR[1, 2] = q01
+            stencilR[2, 0] = q01
+            stencilR[2, 1] = q[row, i+1]
+            stencilR[2, 2] = q12
+
+
+            for s in range(3):
+                betaL[s] = 13.0/12.0*np.dot(BetaCoeffPart1[s], stencilL[s])**2 + 0.25*np.dot(BetaCoeffPart2[s], stencilL[s])**2
+                betaR[s] = 13.0/12.0*np.dot(BetaCoeffPart1[s], stencilR[s])**2 + 0.25*np.dot(BetaCoeffPart2[s], stencilR[s])**2
+
+            tau5L = np.abs(betaL[0] - betaL[2])
+            tau5R = np.abs(betaR[0] - betaR[2])
+            betaZL[:] = ((betaL + WenoEps) / (betaL + tau5L + WenoEps))
+            betaZR[:] = ((betaR + WenoEps) / (betaR + tau5R + WenoEps))
+
+            # Compute and normalise the non-linear weights
+            nonLinWL = LinW / betaZL
+            nonLinWR = LinW / betaZR
+            nonLinWL /= np.sum(nonLinWL)
+            nonLinWR /= np.sum(nonLinWR)
+
+            # Compute the standard polynomial reconstructions
+            for s in range(3):
+                enoIntpL[s] = np.dot(stencilL[s], EnoCoeff[s])
+                enoIntpR[s] = np.dot(stencilR[s], EnoCoeff[s])
+
+            # Combine the different polynomial reconstrucitions weighted by their non-linear weights
+            result[row, 0, i] = np.dot(nonLinWL, enoIntpL)
+            result[row, 1, i] = np.dot(nonLinWR, enoIntpR)
     result[:, 0, :2] = q[:, :2]
     result[:, 1, :2] = q[:, :2]
     result[:, 0, -2:] = q[:, -2:]
