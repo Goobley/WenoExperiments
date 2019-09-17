@@ -3,6 +3,7 @@ from numba import njit
 from .SimSettings import Prim, Cons, Gas
 
 SmallPressure = 1e-16
+SmallDens = 1e-21
 
 @njit('float64[:,:](float64[:,:])', cache=True)
 def prim2cons(V):
@@ -16,18 +17,21 @@ def prim2cons(V):
 
 @njit('float64[:](float64[:], float64[:])', cache=True)
 def eos(dens, eInt):
-    pres = np.maximum((Gas.Gamma - 1.0) * dens * eInt, SmallPressure)
+    # pres = np.fmax((Gas.Gamma - 1.0) * dens * eInt, SmallPressure)
+    pres = (Gas.Gamma - 1.0) * dens * eInt
     return pres
 
 @njit('float64[:,:](float64[:,:])', cache=True)
 def cons2prim(U):
     result = np.empty((Prim.NumVars, U.shape[1]))
+    # result[Prim.Dens] = np.maximum(U[Cons.Dens], SmallDens)
     result[Prim.Dens] = U[Cons.Dens]
-    result[Prim.Velo] = U[Cons.Mome] / U[Cons.Dens]
+    result[Prim.Velo] = U[Cons.Mome] / result[Prim.Dens]
     eKin = 0.5 * result[Prim.Dens] * result[Prim.Velo]**2
-    eInt = np.maximum(U[Cons.Ener] - eKin, SmallPressure)
-    eInt /= U[Cons.Dens]
-    pres = eos(U[Cons.Dens], eInt)
+    # eInt = np.fmax(U[Cons.Ener] - eKin, SmallPressure)
+    eInt = U[Cons.Ener] - eKin
+    eInt /= result[Prim.Dens]
+    pres = eos(result[Prim.Dens], eInt)
     result[Prim.Pres] = pres
     result[Prim.Eint] = eInt * U[Cons.Dens]
     return result

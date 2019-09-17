@@ -35,11 +35,11 @@ class GridCC:
         self.xEnd = self.cc[self.griEnd - 1]
 
 class Simulation:
-    def __init__(self, grid, initialise, apply_bcs, timestep_limit, time_integrate, reconstruction, flux_fn):
+    def __init__(self, grid, initialise, apply_bcs, timestep_limit, time_integrate, reconstruction, stencilWidth, flux_fn, reconstructionValidator=None):
         self.grid = grid
         self.timestep_limit  = timestep_limit
         self.V, self.U = initialise(grid)
-        self.time_integrate = time_integrate(apply_bcs, reconstruction, flux_fn)
+        self.time_integrate = time_integrate(apply_bcs, reconstruction, stencilWidth, flux_fn, reconstructionValidator)
         self.apply_bcs = apply_bcs
 
     def step(self, tMax=None):

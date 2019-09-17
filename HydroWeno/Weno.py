@@ -9,7 +9,7 @@ def reconstruct_weno(q, dx=None):
     # Set up general and left/right coefficients.
     # The left/right coeffs are just flipped relative to each other
     Pow = 2
-    WenoEps = 1e-36
+    WenoEps = 1e-6
     EnoCoeffL = np.array((( 11.0/6.0, -7.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0)))
@@ -52,6 +52,64 @@ def reconstruct_weno(q, dx=None):
     return result
 
 @njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
+def reconstruct_weno_log(q, dx=None):
+    nRows, nGrid = q.shape
+    result = np.zeros((nRows, 2, nGrid))
+
+    # Set up general and left/right coefficients.
+    # The left/right coeffs are just flipped relative to each other
+    Pow = 2
+    WenoEps = 1e-6
+    EnoCoeffL = np.array((( 11.0/6.0, -7.0/6.0,  2.0/6.0),
+                          ( 2.0/6.0,   5.0/6.0, -1.0/6.0),
+                          (-1.0/6.0,   5.0/6.0,  2.0/6.0)))
+    LinWL = np.array((0.3, 0.6, 0.1))
+    EnoCoeffR = np.array((( 2.0/6.0,  -7.0/6.0,  11.0/6.0),
+                          (-1.0/6.0,   5.0/6.0,  2.0/6.0),
+                          ( 2.0/6.0,   5.0/6.0, -1.0/6.0)))
+    LinWR = np.array((0.1, 0.6, 0.3))
+
+    q[0] = np.log(q[0])
+    q[2] = np.log(q[2])
+    q[3] = np.log(q[3])
+
+    # Loop over each row in the q matrix - we parallelise over rows
+    for row in prange(nRows):
+        beta = np.empty(3)
+        for i in range(2, nGrid-2):
+            # Compute beta, the smoothness indicator for each intepolating polynomial
+            beta[0] = 13./12.*(q[row, i-2] - 2.*q[row, i-1] + q[row, i])**2 + 0.25*(q[row, i-2] - 4.*q[row, i-1] + 3.*q[row, i])**2
+            beta[1] = 13./12.*(q[row, i-1] - 2.*q[row, i] + q[row, i+1])**2 + 0.25*(q[row, i-1] - q[row, i+1])**2
+            beta[2] = 13./12.*(q[row, i] - 2.*q[row, i+1] + q[row, i+2])**2 + 0.25*(3.*q[row, i] - 4.*q[row, i+1] + q[row, i+2])**2
+
+            # Compute and normalise the non-linear weights
+            nonLinWL = LinWL / (WenoEps + beta)**Pow
+            nonLinWR = LinWR / (WenoEps + beta)**Pow
+            nonLinWL /= np.sum(nonLinWL)
+            nonLinWR /= np.sum(nonLinWR)
+
+            # Compute the standard polynomial reconstructions
+            enoIntpL = np.zeros(3)
+            enoIntpR = np.zeros(3)
+            for s in range(3):
+                gridIdx = s + i - 2
+                enoIntpL[s] = np.dot(q[row, gridIdx:gridIdx+3], EnoCoeffL[2-s]) 
+                enoIntpR[s] = np.dot(q[row, gridIdx:gridIdx+3], EnoCoeffR[s]) 
+
+            # Combine the different polynomial reconstrucitions weighted by their non-linear weights
+            result[row, 0, i] = np.dot(nonLinWL, enoIntpL)
+            result[row, 1, i] = np.dot(nonLinWR, enoIntpR)
+    result[:, 0, :2] = q[:, :2]
+    result[:, 1, :2] = q[:, :2]
+    result[:, 0, -2:] = q[:, -2:]
+    result[:, 1, -2:] = q[:, -2:]
+
+    result[0] = np.exp(result[0])
+    result[2] = np.exp(result[2])
+    result[3] = np.exp(result[3])
+    return result
+
+# @njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
 def reconstruct_weno_z(q, dx=None):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -104,7 +162,7 @@ def reconstruct_weno_z(q, dx=None):
     result[:, 1, -2:] = q[:, -2:]
     return result
 
-@njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
+# @njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
 def reconstruct_weno_nm(q, dx):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -189,7 +247,7 @@ def reconstruct_weno_nm(q, dx):
     result[:, 1, -2:] = q[:, -2:]
     return result
 
-@njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
+# @njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
 def reconstruct_weno_nm_z(q, dx):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))

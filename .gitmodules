@@ -1,0 +1,3 @@
+[submodule "sodshocktube"]
+	path = sodshocktube
+	url = https://github.com/ibackus/sod-shocktube
