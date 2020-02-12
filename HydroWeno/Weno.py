@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit, stencil, prange
 
-@njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
+@njit(parallel=True, cache=True)
 def reconstruct_weno(q, dx=None):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -13,11 +13,11 @@ def reconstruct_weno(q, dx=None):
     EnoCoeffL = np.array((( 11.0/6.0, -7.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0)))
-    LinWL = np.array((0.3, 0.6, 0.1))
+    LinWL = np.array([0.3, 0.6, 0.1])
     EnoCoeffR = np.array((( 2.0/6.0,  -7.0/6.0,  11.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0)))
-    LinWR = np.array((0.1, 0.6, 0.3))
+    LinWR = np.array([0.1, 0.6, 0.3])
 
     # Loop over each row in the q matrix - we parallelise over rows
     for row in prange(nRows):
@@ -51,7 +51,7 @@ def reconstruct_weno(q, dx=None):
     result[:, 1, -2:] = q[:, -2:]
     return result
 
-@njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
+@njit(parallel=True, cache=True)
 def reconstruct_weno_log(q, dx=None):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -63,11 +63,11 @@ def reconstruct_weno_log(q, dx=None):
     EnoCoeffL = np.array((( 11.0/6.0, -7.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0)))
-    LinWL = np.array((0.3, 0.6, 0.1))
+    LinWL = np.array([0.3, 0.6, 0.1])
     EnoCoeffR = np.array((( 2.0/6.0,  -7.0/6.0,  11.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0)))
-    LinWR = np.array((0.1, 0.6, 0.3))
+    LinWR = np.array([0.1, 0.6, 0.3])
 
     q[0] = np.log(q[0])
     q[2] = np.log(q[2])
@@ -109,7 +109,7 @@ def reconstruct_weno_log(q, dx=None):
     result[3] = np.exp(result[3])
     return result
 
-# @njit(['float64[:,:,:](float64[:,:], Omitted(None))', 'float64[:,:,:](float64[:,:], float64[:])'], parallel=True, cache=True)
+@njit(parallel=True, cache=True)
 def reconstruct_weno_z(q, dx=None):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -121,11 +121,11 @@ def reconstruct_weno_z(q, dx=None):
     EnoCoeffL = np.array((( 11.0/6.0, -7.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0)))
-    LinWL = np.array((0.3, 0.6, 0.1))
+    LinWL = np.array([0.3, 0.6, 0.1])
     EnoCoeffR = np.array((( 2.0/6.0,  -7.0/6.0,  11.0/6.0),
                           (-1.0/6.0,   5.0/6.0,  2.0/6.0),
                           ( 2.0/6.0,   5.0/6.0, -1.0/6.0)))
-    LinWR = np.array((0.1, 0.6, 0.3))
+    LinWR = np.array([0.1, 0.6, 0.3])
 
     # Loop over each row in the q matrix - we parallelise over rows
     for row in prange(nRows):
@@ -162,7 +162,7 @@ def reconstruct_weno_z(q, dx=None):
     result[:, 1, -2:] = q[:, -2:]
     return result
 
-# @njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
+@njit(parallel=True, cache=True)
 def reconstruct_weno_nm(q, dx):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -179,7 +179,7 @@ def reconstruct_weno_nm(q, dx):
     BetaCoeffPart2 = np.array((( 4.0, -2.0, -2.0),
                                (-2.0,  0.0,  2.0),
                                (-6.0,  8.0, -2.0)))
-    LinW = np.array((0.1, 0.6, 0.3))
+    LinW = np.array([0.1, 0.6, 0.3])
     # length ratio designated rho
     rho = np.zeros(nGrid)
     rho[:-1] = dx[:-1] / (dx[:-1] + dx[1:])
@@ -247,7 +247,7 @@ def reconstruct_weno_nm(q, dx):
     result[:, 1, -2:] = q[:, -2:]
     return result
 
-# @njit('float64[:,:,:](float64[:,:], float64[:])', parallel=True, cache=True)
+@njit(parallel=True, cache=True)
 def reconstruct_weno_nm_z(q, dx):
     nRows, nGrid = q.shape
     result = np.zeros((nRows, 2, nGrid))
@@ -264,7 +264,7 @@ def reconstruct_weno_nm_z(q, dx):
     BetaCoeffPart2 = np.array((( 4.0, -2.0, -2.0),
                                (-2.0,  0.0,  2.0),
                                (-6.0,  8.0, -2.0)))
-    LinW = np.array((0.1, 0.6, 0.3))
+    LinW = np.array([0.1, 0.6, 0.3])
     # length ratio designated rho
     rho = np.zeros(nGrid)
     rho[:-1] = dx[:-1] / (dx[:-1] + dx[1:])
